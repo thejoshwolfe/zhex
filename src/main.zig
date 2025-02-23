@@ -5,6 +5,7 @@ const ArrayList = std.ArrayList;
 const StreamSource = @import("./stream_source.zig").StreamSource;
 
 const ZhexCompiler = @import("./ZhexCompiler.zig");
+const max_line_length = ZhexCompiler.max_line_length;
 
 fn usage() !void {
     std.log.err(
@@ -12,8 +13,6 @@ fn usage() !void {
     , .{});
     return error.Usage;
 }
-
-const max_line_length = 0x1000;
 
 pub fn main() !void {
     var gpa_instance = std.heap.GeneralPurposeAllocator(.{}).init;
