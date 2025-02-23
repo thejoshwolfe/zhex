@@ -2,7 +2,7 @@ const std = @import("std");
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
-const StreamSource = std.io.StreamSource;
+const StreamSource = @import("./stream_source.zig").StreamSource;
 
 const ZhexCompiler = @import("./ZhexCompiler.zig");
 
@@ -44,8 +44,7 @@ fn zhexToBin(allocator: Allocator, input_file: std.fs.File, output_file: std.fs.
     var buffered_reader = std.io.bufferedReader(input_file.reader());
     const input = buffered_reader.reader().any();
 
-    var output_stream = StreamSource{ .file = output_file };
-    var compiler = ZhexCompiler.init(&output_stream);
+    var compiler = ZhexCompiler.init(.{ .file = output_file });
 
     var line_buffer = try ArrayList(u8).initCapacity(allocator, max_line_length);
     defer line_buffer.deinit();

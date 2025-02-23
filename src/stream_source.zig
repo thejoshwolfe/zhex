@@ -1,4 +1,9 @@
-const std = @import("../std.zig");
+// This was adapted from the stdlib: https://github.com/ziglang/zig/blob/c44f4501e79744a2744f7e0c72ff71cdbcb62440/lib/std/io/stream_source.zig
+// The memory ownership was changed. Instead of owning the `FixedBufferStream` memory,
+// this class now just holds a pointer, which means that in all cases this class is more of a small, byval handle type,
+// like `File` is, rather than an object that participates in life cycles.
+
+const std = @import("std");
 const builtin = @import("builtin");
 const io = std.io;
 
@@ -11,11 +16,11 @@ pub const StreamSource = union(enum) {
     const has_file = (builtin.os.tag != .freestanding and builtin.os.tag != .uefi);
 
     /// The stream access is redirected to this buffer.
-    buffer: io.FixedBufferStream([]u8),
+    buffer: *io.FixedBufferStream([]u8),
 
     /// The stream access is redirected to this buffer.
     /// Writing to the source will always yield `error.AccessDenied`.
-    const_buffer: io.FixedBufferStream([]const u8),
+    const_buffer: *io.FixedBufferStream([]const u8),
 
     /// The stream access is redirected to this file.
     /// On freestanding, this must never be initialized!
@@ -26,10 +31,10 @@ pub const StreamSource = union(enum) {
     pub const SeekError = io.FixedBufferStream([]u8).SeekError || (if (has_file) std.fs.File.SeekError else error{});
     pub const GetSeekPosError = io.FixedBufferStream([]u8).GetSeekPosError || (if (has_file) std.fs.File.GetSeekPosError else error{});
 
-    pub const Reader = io.Reader(*StreamSource, ReadError, read);
-    pub const Writer = io.Writer(*StreamSource, WriteError, write);
+    pub const Reader = io.Reader(StreamSource, ReadError, read);
+    pub const Writer = io.Writer(StreamSource, WriteError, write);
     pub const SeekableStream = io.SeekableStream(
-        *StreamSource,
+        StreamSource,
         SeekError,
         GetSeekPosError,
         seekTo,
@@ -38,63 +43,63 @@ pub const StreamSource = union(enum) {
         getEndPos,
     );
 
-    pub fn read(self: *StreamSource, dest: []u8) ReadError!usize {
-        switch (self.*) {
-            .buffer => |*x| return x.read(dest),
-            .const_buffer => |*x| return x.read(dest),
+    pub fn read(self: StreamSource, dest: []u8) ReadError!usize {
+        switch (self) {
+            .buffer => |x| return x.read(dest),
+            .const_buffer => |x| return x.read(dest),
             .file => |x| if (!has_file) unreachable else return x.read(dest),
         }
     }
 
-    pub fn write(self: *StreamSource, bytes: []const u8) WriteError!usize {
-        switch (self.*) {
-            .buffer => |*x| return x.write(bytes),
+    pub fn write(self: StreamSource, bytes: []const u8) WriteError!usize {
+        switch (self) {
+            .buffer => |x| return x.write(bytes),
             .const_buffer => return error.AccessDenied,
             .file => |x| if (!has_file) unreachable else return x.write(bytes),
         }
     }
 
-    pub fn seekTo(self: *StreamSource, pos: u64) SeekError!void {
-        switch (self.*) {
-            .buffer => |*x| return x.seekTo(pos),
-            .const_buffer => |*x| return x.seekTo(pos),
+    pub fn seekTo(self: StreamSource, pos: u64) SeekError!void {
+        switch (self) {
+            .buffer => |x| return x.seekTo(pos),
+            .const_buffer => |x| return x.seekTo(pos),
             .file => |x| if (!has_file) unreachable else return x.seekTo(pos),
         }
     }
 
-    pub fn seekBy(self: *StreamSource, amt: i64) SeekError!void {
-        switch (self.*) {
-            .buffer => |*x| return x.seekBy(amt),
-            .const_buffer => |*x| return x.seekBy(amt),
+    pub fn seekBy(self: StreamSource, amt: i64) SeekError!void {
+        switch (self) {
+            .buffer => |x| return x.seekBy(amt),
+            .const_buffer => |x| return x.seekBy(amt),
             .file => |x| if (!has_file) unreachable else return x.seekBy(amt),
         }
     }
 
-    pub fn getEndPos(self: *StreamSource) GetSeekPosError!u64 {
-        switch (self.*) {
-            .buffer => |*x| return x.getEndPos(),
-            .const_buffer => |*x| return x.getEndPos(),
+    pub fn getEndPos(self: StreamSource) GetSeekPosError!u64 {
+        switch (self) {
+            .buffer => |x| return x.getEndPos(),
+            .const_buffer => |x| return x.getEndPos(),
             .file => |x| if (!has_file) unreachable else return x.getEndPos(),
         }
     }
 
-    pub fn getPos(self: *StreamSource) GetSeekPosError!u64 {
-        switch (self.*) {
-            .buffer => |*x| return x.getPos(),
-            .const_buffer => |*x| return x.getPos(),
+    pub fn getPos(self: StreamSource) GetSeekPosError!u64 {
+        switch (self) {
+            .buffer => |x| return x.getPos(),
+            .const_buffer => |x| return x.getPos(),
             .file => |x| if (!has_file) unreachable else return x.getPos(),
         }
     }
 
-    pub fn reader(self: *StreamSource) Reader {
+    pub fn reader(self: StreamSource) Reader {
         return .{ .context = self };
     }
 
-    pub fn writer(self: *StreamSource) Writer {
+    pub fn writer(self: StreamSource) Writer {
         return .{ .context = self };
     }
 
-    pub fn seekableStream(self: *StreamSource) SeekableStream {
+    pub fn seekableStream(self: StreamSource) SeekableStream {
         return .{ .context = self };
     }
 };
@@ -105,18 +110,20 @@ test "refs" {
 
 test "mutable buffer" {
     var buffer: [64]u8 = undefined;
-    var source = StreamSource{ .buffer = std.io.fixedBufferStream(&buffer) };
+    var fbs = std.io.fixedBufferStream(&buffer);
+    const source = StreamSource{ .buffer = &fbs };
 
     var writer = source.writer();
 
     try writer.writeAll("Hello, World!");
 
-    try std.testing.expectEqualStrings("Hello, World!", source.buffer.getWritten());
+    try std.testing.expectEqualStrings("Hello, World!", fbs.getWritten());
 }
 
 test "const buffer" {
     const buffer: [64]u8 = "Hello, World!".* ++ ([1]u8{0xAA} ** 51);
-    var source = StreamSource{ .const_buffer = std.io.fixedBufferStream(&buffer) };
+    var fbs = std.io.fixedBufferStream(&buffer);
+    const source = StreamSource{ .const_buffer = &fbs };
 
     var reader = source.reader();
 

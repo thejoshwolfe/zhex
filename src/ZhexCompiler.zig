@@ -1,11 +1,11 @@
-output_stream: *StreamSource,
+output_stream: StreamSource,
 buffered_output: std.io.BufferedWriter(0x1000, StreamSource.Writer),
 
 const std = @import("std");
-const StreamSource = std.io.StreamSource;
+const StreamSource = @import("./stream_source.zig").StreamSource;
 const ZhexCompiler = @This();
 
-pub fn init(output_stream: *StreamSource) ZhexCompiler {
+pub fn init(output_stream: StreamSource) ZhexCompiler {
     return .{
         .output_stream = output_stream,
         .buffered_output = .{ .unbuffered_writer = output_stream.writer() },
@@ -62,9 +62,8 @@ fn startsWith(haystack: []const u8, needle: []const u8) bool {
 
 test "basic" {
     var output_buffer: [255]u8 = undefined;
-    var output_stream = StreamSource{ .buffer = std.io.fixedBufferStream(&output_buffer) };
-    const output_fixed_buffer_stream = &output_stream.buffer;
-    var compiler = ZhexCompiler.init(&output_stream);
+    var output_fixed_buffer_stream = std.io.fixedBufferStream(&output_buffer);
+    var compiler = ZhexCompiler.init(.{ .buffer = &output_fixed_buffer_stream });
 
     try compiler.handleLine("48 65 6c 6c 6f 0a");
     try compiler.flush();
