@@ -6,7 +6,7 @@ pub fn build(b: *std.Build) void {
 
     // Lib
     const lib_mod = b.createModule(.{
-        .root_source_file = b.path("src/ZhexCompiler.zig"),
+        .root_source_file = b.path("src/Compiler.zig"),
         .target = target,
         .optimize = optimize,
     });

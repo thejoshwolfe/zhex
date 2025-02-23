@@ -4,8 +4,7 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const StreamSource = @import("./stream_source.zig").StreamSource;
 
-const ZhexCompiler = @import("./ZhexCompiler.zig");
-const max_line_length = ZhexCompiler.max_line_length;
+const Compiler = @import("./Compiler.zig");
 
 fn usage() !void {
     std.log.err(
@@ -39,31 +38,12 @@ pub fn main() !void {
     return std.process.cleanExit();
 }
 
-fn zhexToBin(allocator: Allocator, input_file: std.fs.File, output_file: std.fs.File) !void {
-    var buffered_reader = std.io.bufferedReader(input_file.reader());
-    const input = buffered_reader.reader().any();
+fn zhexToBin(input_file: std.fs.File, output_file: std.fs.File) !void {
+    var compiler = Compiler.init(.{ .file = output_file });
 
-    var compiler = ZhexCompiler.init(.{ .file = output_file });
-
-    var line_buffer = try ArrayList(u8).initCapacity(allocator, max_line_length);
-    defer line_buffer.deinit();
-    while (try readLine(input, &line_buffer)) |line| {
-        try compiler.handleLine(line);
-    }
+    try compiler.feed(.{ .file = input_file });
 
     return compiler.flush();
-}
-
-fn readLine(input: std.io.AnyReader, line_buffer: *ArrayList(u8)) !?[]const u8 {
-    line_buffer.clearRetainingCapacity();
-    input.streamUntilDelimiter(line_buffer.writer(), '\n', max_line_length) catch |err| switch (err) {
-        error.EndOfStream => {}, // Effectively the same as finding the delimiter.
-        error.StreamTooLong => return error.LineTooLong,
-        else => |e| return e,
-    };
-    const line = line_buffer.items;
-    if (line.len == 0) return null;
-    return line;
 }
 
 fn eql(a: []const u8, b: []const u8) bool {
