@@ -2,6 +2,9 @@ const std = @import("std");
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
+const StreamSource = std.io.StreamSource;
+
+const ZhexCompiler = @import("./ZhexCompiler.zig");
 
 fn usage() !void {
     std.log.err(
@@ -41,18 +44,16 @@ fn zhexToBin(allocator: Allocator, input_file: std.fs.File, output_file: std.fs.
     var buffered_reader = std.io.bufferedReader(input_file.reader());
     const input = buffered_reader.reader().any();
 
-    var buffered_output = std.io.bufferedWriter(output_file.writer());
-    const output = buffered_output.writer().any();
+    var output_stream = StreamSource{ .file = output_file };
+    var compiler = ZhexCompiler.init(&output_stream);
 
-    var compiler = ZhexCompiler.init(output);
-
-    var line_buffer = ArrayList(u8).init(allocator);
+    var line_buffer = try ArrayList(u8).initCapacity(allocator, max_line_length);
     defer line_buffer.deinit();
     while (try readLine(input, &line_buffer)) |line| {
         try compiler.handleLine(line);
     }
 
-    return buffered_output.flush();
+    return compiler.flush();
 }
 
 fn readLine(input: std.io.AnyReader, line_buffer: *ArrayList(u8)) !?[]const u8 {
@@ -67,63 +68,6 @@ fn readLine(input: std.io.AnyReader, line_buffer: *ArrayList(u8)) !?[]const u8 {
     return line;
 }
 
-const ZhexCompiler = struct {
-    output: std.io.AnyWriter,
-
-    pub fn init(output: std.io.AnyWriter) ZhexCompiler {
-        return .{
-            .output = output,
-        };
-    }
-
-    pub fn handleLine(self: *ZhexCompiler, _line: []const u8) !void {
-        var line = _line;
-        // Skip leading whitespace.
-        while (line.len > 0 and line[0] == ' ') line = line[1..];
-        if (line.len == 0 or startsWith(line, ";")) {
-            // Blank or comment.
-        } else if (startsWith(line, ":0x")) {
-            @panic("TODO: offset assertion");
-        } else {
-            // Values
-            try self.handleValues(line);
-        }
-    }
-
-    fn handleValues(self: *ZhexCompiler, _line: []const u8) !void {
-        var line = _line;
-        mainLoop: while (line.len > 0) {
-            while (line[0] == ' ') {
-                line = line[1..];
-                continue :mainLoop;
-            }
-            if (line.len < 2) return error.SyntaxError;
-            if (line[0] == '"') {
-                @panic("TODO: string values");
-            } else if (startsWith(line, "0x")) {
-                @panic("TODO: little endian hex values");
-            } else {
-                const nibbles = line[0..2];
-                const value = (try nibbleFromHex(nibbles[0]) << 4) | (try nibbleFromHex(nibbles[1]));
-                try self.output.writeByte(value);
-                line = line[2..];
-            }
-        }
-    }
-};
-
-fn nibbleFromHex(c: u8) !u8 {
-    return switch (c) {
-        '0'...'9' => c - '0',
-        'A'...'F' => c - 'A',
-        'a'...'f' => c - 'a',
-        else => return error.SyntaxError,
-    };
-}
-
 fn eql(a: []const u8, b: []const u8) bool {
     return std.mem.eql(u8, a, b);
-}
-fn startsWith(haystack: []const u8, needle: []const u8) bool {
-    return std.mem.startsWith(u8, haystack, needle);
 }
