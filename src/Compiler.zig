@@ -1,6 +1,7 @@
 output_stream: StreamSource,
 buffered_output: std.io.BufferedWriter(0x1000, StreamSource.Writer),
 output_pos: u64 = 0,
+at_start_of_line: bool = true,
 
 const std = @import("std");
 const StreamSource = @import("./stream_source.zig").StreamSource;
@@ -22,7 +23,6 @@ pub fn feedString(self: *Compiler, input: []const u8) !void {
 }
 pub fn feed(self: *Compiler, input_stream: StreamSource) !void {
     var tokenizer = Tokenizer{ .input_stream = input_stream };
-    var at_start_of_line = true;
 
     while (true) {
         switch (try tokenizer.next()) {
@@ -31,7 +31,7 @@ pub fn feed(self: *Compiler, input_stream: StreamSource) !void {
             .byte4 => |bytes| try self.writeAll(&bytes),
             .byte8 => |bytes| try self.writeAll(&bytes),
             .offset_assertion => |value| {
-                if (!at_start_of_line) return error.SyntaxError;
+                if (!self.at_start_of_line) return error.SyntaxError;
                 try self.assertOffset(value);
                 switch (try tokenizer.next()) {
                     .eof => {},
@@ -40,12 +40,12 @@ pub fn feed(self: *Compiler, input_stream: StreamSource) !void {
                 }
             },
             .newline => {
-                at_start_of_line = true;
+                self.at_start_of_line = true;
                 continue;
             },
             .eof => break,
         }
-        at_start_of_line = false;
+        self.at_start_of_line = false;
     }
 }
 
@@ -66,28 +66,18 @@ fn writeAll(self: *Compiler, bytes: []const u8) !void {
     self.output_pos += bytes.len;
 }
 
-fn nibbleFromHex(c: u8) !u8 {
-    return switch (c) {
-        '0'...'9' => c - '0',
-        'A'...'F' => 10 + c - 'A',
-        'a'...'f' => 10 + c - 'a',
-        else => return error.SyntaxError,
-    };
-}
-
-fn startsWith(haystack: []const u8, needle: []const u8) bool {
-    return std.mem.startsWith(u8, haystack, needle);
-}
-
 test "basic" {
     var output_buffer: [255]u8 = undefined;
     var output_fixed_buffer_stream = std.io.fixedBufferStream(&output_buffer);
     var compiler = Compiler.init(.{ .buffer = &output_fixed_buffer_stream });
 
-    try compiler.feedString("48 65 6c 6c 6f 0a");
+    try compiler.feedString("48 65 6c 6c 6f");
     try compiler.flush();
+    try std.testing.expectEqualSlices(u8, "Hello", output_fixed_buffer_stream.getWritten());
 
-    try std.testing.expectEqualSlices(u8, "Hello\n", output_fixed_buffer_stream.getWritten());
+    try compiler.feedString("20776f726c640a");
+    try compiler.flush();
+    try std.testing.expectEqualSlices(u8, "Hello world\n", output_fixed_buffer_stream.getWritten());
 }
 
 test "offset assertion" {

@@ -33,7 +33,7 @@ pub fn main() !void {
     var output_file = try std.fs.cwd().createFile(output_path_str, .{});
     defer output_file.close();
 
-    try zhexToBin(allocator, input_file, output_file);
+    try zhexToBin(input_file, output_file);
 
     return std.process.cleanExit();
 }
