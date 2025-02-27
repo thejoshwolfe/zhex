@@ -1,10 +1,18 @@
 tokenizer: Tokenizer,
-output_stream: StreamSource,
-buffered_output: std.io.BufferedWriter(0x1000, StreamSource.Writer),
-output_pos: u64 = 0,
 at_start_of_line: bool = true,
 
+output_stream: StreamSource,
+buffered_output: std.io.BufferedWriter(0x1000, StreamSource.Writer),
+// Track this to support offset assertions without requiring the output stream be seekable.
+output_pos: u64 = 0,
+
+// After seeking backward, only assert matching contents until this offset instead of overwriting.
+resume_output_pos: ?u64 = null,
+// After seeking backward, this buffers reading while asserting overlapping contents.
+buffered_output_reader: std.io.BufferedReader(0x1000, StreamSource.Reader),
+
 const std = @import("std");
+const assert = std.debug.assert;
 const StreamSource = @import("./stream_source.zig").StreamSource;
 const Compiler = @This();
 const Tokenizer = @import("./Tokenizer.zig");
@@ -14,6 +22,7 @@ pub fn init(output_stream: StreamSource) Compiler {
         .tokenizer = .{ .input_stream = undefined },
         .output_stream = output_stream,
         .buffered_output = .{ .unbuffered_writer = output_stream.writer() },
+        .buffered_output_reader = .{ .unbuffered_reader = output_stream.reader() },
     };
 }
 
@@ -39,6 +48,15 @@ pub fn feed(self: *Compiler, input_stream: StreamSource) !void {
                     else => return error.SyntaxError,
                 }
             },
+            .seek_backward => |offset| {
+                try self.buffered_output.flush();
+                const pos = try self.output_stream.getPos();
+                assert(pos == self.output_pos);
+                const new_pos = try std.math.sub(u64, pos, offset); // can underflow
+                try self.output_stream.seekTo(new_pos);
+                self.output_pos = new_pos;
+                self.resume_output_pos = pos;
+            },
             .newline => {
                 self.at_start_of_line = true;
                 continue;
@@ -58,12 +76,45 @@ pub fn assertOffset(self: *const Compiler, offset: u64) !void {
 }
 
 fn writeByte(self: *Compiler, b: u8) !void {
-    try self.buffered_output.writer().writeByte(b);
+    if (self.resume_output_pos) |future_pos| {
+        if (b != try self.buffered_output_reader.reader().readByte()) return error.ByteValueMismatchAfterSeekBackward;
+        if (future_pos == self.output_pos + 1) {
+            // We're caught up.
+            try self.doneRetreading();
+        }
+    } else {
+        try self.buffered_output.writer().writeByte(b);
+    }
     self.output_pos += 1;
 }
 fn writeAll(self: *Compiler, bytes: []const u8) !void {
-    try self.buffered_output.writer().writeAll(bytes);
+    var cursor: usize = 0;
+    if (self.resume_output_pos) |future_pos| {
+        // Read and assert the retread bytes.
+        const retread_len = @min(bytes.len, future_pos - self.output_pos);
+        var buf: [8]u8 = undefined;
+        const buffer = buf[0..retread_len]; // assumes this function is called with sufficiently small slices.
+        try self.buffered_output_reader.reader().readNoEof(buffer);
+        while (cursor < retread_len) : (cursor += 1) {
+            if (buffer[cursor] != bytes[cursor]) return error.ByteValueMismatchAfterSeekBackward;
+        }
+
+        if (self.output_pos + retread_len == future_pos) {
+            // We're caught up.
+            try self.doneRetreading();
+        }
+    }
+    if (cursor < bytes.len) {
+        try self.buffered_output.writer().writeAll(bytes[cursor..]);
+    }
     self.output_pos += bytes.len;
+}
+
+fn doneRetreading(self: *Compiler) !void {
+    assert(self.resume_output_pos.? == try self.output_stream.getPos());
+    self.buffered_output_reader.start = 0;
+    self.buffered_output_reader.end = 0;
+    self.resume_output_pos = null;
 }
 
 test "basic" {

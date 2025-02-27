@@ -36,7 +36,7 @@ fn zhexToBin(input_path_str: []const u8, output_path_str: []const u8) !void {
     var input_file = try std.fs.cwd().openFile(input_path_str, .{});
     defer input_file.close();
 
-    var output_file = try std.fs.cwd().createFile(output_path_str, .{});
+    var output_file = try std.fs.cwd().createFile(output_path_str, .{ .read = true });
     defer output_file.close();
 
     var compiler = Compiler.init(.{ .file = output_file });
@@ -58,9 +58,18 @@ fn zhexToBin(input_path_str: []const u8, output_path_str: []const u8) !void {
                     compiler.tokenizer.column_number,
                 });
             },
-            else => {},
+            error.ByteValueMismatchAfterSeekBackward => {
+                std.log.err("{s}:{}:{}: byte value mismatch after seek backward", .{
+                    input_path_str,
+                    compiler.tokenizer.line_number,
+                    compiler.tokenizer.column_number,
+                });
+            },
+            // Crash
+            else => return err,
         }
-        return err;
+        // "Clean" error.
+        compiler.flush() catch {};
     };
 
     return compiler.flush();

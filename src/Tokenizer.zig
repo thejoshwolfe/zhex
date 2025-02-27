@@ -39,6 +39,12 @@ pub fn next(self: *Tokenizer) !Token {
                 return .{ .offset_assertion = value };
             },
 
+            // Seek backward directives
+            '#' => {
+                try self.expectBytes("seek -0x");
+                return .{ .seek_backward = try self.readHexInt() };
+            },
+
             '0'...'9', 'A'...'F', 'a'...'f' => {
                 const c2 = try self.readByte();
 
@@ -131,5 +137,6 @@ pub const Token = union(enum) {
     byte8: [8]u8,
     newline,
     offset_assertion: u64,
+    seek_backward: u64,
     eof,
 };
