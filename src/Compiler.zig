@@ -1,3 +1,4 @@
+tokenizer: Tokenizer,
 output_stream: StreamSource,
 buffered_output: std.io.BufferedWriter(0x1000, StreamSource.Writer),
 output_pos: u64 = 0,
@@ -8,10 +9,9 @@ const StreamSource = @import("./stream_source.zig").StreamSource;
 const Compiler = @This();
 const Tokenizer = @import("./Tokenizer.zig");
 
-pub const max_line_length = 0x1000;
-
 pub fn init(output_stream: StreamSource) Compiler {
     return .{
+        .tokenizer = .{ .input_stream = undefined },
         .output_stream = output_stream,
         .buffered_output = .{ .unbuffered_writer = output_stream.writer() },
     };
@@ -22,10 +22,10 @@ pub fn feedString(self: *Compiler, input: []const u8) !void {
     return self.feed(.{ .const_buffer = &fbs });
 }
 pub fn feed(self: *Compiler, input_stream: StreamSource) !void {
-    var tokenizer = Tokenizer{ .input_stream = input_stream };
+    self.tokenizer.input_stream = input_stream;
 
     while (true) {
-        switch (try tokenizer.next()) {
+        switch (try self.tokenizer.next()) {
             .byte => |b| try self.writeByte(b),
             .byte2 => |bytes| try self.writeAll(&bytes),
             .byte4 => |bytes| try self.writeAll(&bytes),
@@ -33,7 +33,7 @@ pub fn feed(self: *Compiler, input_stream: StreamSource) !void {
             .offset_assertion => |value| {
                 if (!self.at_start_of_line) return error.SyntaxError;
                 try self.assertOffset(value);
-                switch (try tokenizer.next()) {
+                switch (try self.tokenizer.next()) {
                     .eof => {},
                     .newline => continue,
                     else => return error.SyntaxError,

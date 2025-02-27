@@ -2,7 +2,7 @@
 
 Yet another hexdump syntax.
 
-This is a data language that compiles from text to binary primarily using hex codes similar to what you would get from a hexdump.
+This is a data language that compiles from text to binary primarily using hex codes similar to a hexdump.
 The input is a text file in zhex syntax, described below, and the output is a stream of bytes.
 A byte has 8 bits.
 

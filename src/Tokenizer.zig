@@ -1,5 +1,10 @@
 input_stream: StreamSource,
 next_byte: ?u8 = null,
+/// Line numbers start at 1 for reporting errors.
+line_number: u64 = 1,
+/// Column numbers start at 1 for reporting errors.
+column_number: u64 = 1,
+cursor_column_number: u64 = 1,
 
 const std = @import("std");
 const StreamSource = @import("./stream_source.zig").StreamSource;
@@ -7,13 +12,14 @@ const Tokenizer = @This();
 
 pub fn next(self: *Tokenizer) !Token {
     while (true) {
+        self.column_number = self.cursor_column_number;
         const c = self.readByte() catch |err| switch (err) {
             error.EndOfStream => return .eof,
             else => |e| return e,
         };
         switch (c) {
             // Newline
-            '\n' => return .newline,
+            '\n' => return self.newline(),
             // Skip whitespace
             ' ' => continue,
             // Comment until newline
@@ -22,7 +28,8 @@ pub fn next(self: *Tokenizer) !Token {
                     error.EndOfStream => return .eof,
                     else => |e| return e,
                 };
-                if (b == '\n') return .newline;
+                self.column_number = self.cursor_column_number;
+                if (b == '\n') return self.newline();
             },
 
             // Offset assertion
@@ -76,6 +83,12 @@ pub fn next(self: *Tokenizer) !Token {
     }
 }
 
+fn newline(self: *Tokenizer) Token {
+    self.line_number += 1;
+    self.cursor_column_number = 1;
+    return .newline;
+}
+
 fn expectBytes(self: *Tokenizer, bytes: []const u8) !void {
     for (bytes) |b| {
         if (b != try self.readByte()) return error.SyntaxError;
@@ -87,7 +100,9 @@ fn readByte(self: *Tokenizer) !u8 {
         self.next_byte = null;
         return b;
     }
-    return self.input_stream.reader().readByte();
+    const b = try self.input_stream.reader().readByte();
+    self.cursor_column_number += 1;
+    return b;
 }
 
 fn readHexInt(self: *Tokenizer) !u64 {

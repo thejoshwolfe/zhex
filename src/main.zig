@@ -27,21 +27,41 @@ pub fn main() !void {
     const output_path_str = args.next() orelse return usage();
     if (args.next() != null) return usage();
 
+    try zhexToBin(input_path_str, output_path_str);
+
+    return std.process.cleanExit();
+}
+
+fn zhexToBin(input_path_str: []const u8, output_path_str: []const u8) !void {
     var input_file = try std.fs.cwd().openFile(input_path_str, .{});
     defer input_file.close();
 
     var output_file = try std.fs.cwd().createFile(output_path_str, .{});
     defer output_file.close();
 
-    try zhexToBin(input_file, output_file);
-
-    return std.process.cleanExit();
-}
-
-fn zhexToBin(input_file: std.fs.File, output_file: std.fs.File) !void {
     var compiler = Compiler.init(.{ .file = output_file });
 
-    try compiler.feed(.{ .file = input_file });
+    compiler.feed(.{ .file = input_file }) catch |err| {
+        switch (err) {
+            error.OffsetAssertionIncorrect => {
+                std.log.err("{s}:{}:{}: offset incorrect. expected: 0x{x}", .{
+                    input_path_str,
+                    compiler.tokenizer.line_number,
+                    compiler.tokenizer.column_number,
+                    compiler.output_pos,
+                });
+            },
+            error.SyntaxError => {
+                std.log.err("{s}:{}:{}: syntax error", .{
+                    input_path_str,
+                    compiler.tokenizer.line_number,
+                    compiler.tokenizer.column_number,
+                });
+            },
+            else => {},
+        }
+        return err;
+    };
 
     return compiler.flush();
 }
