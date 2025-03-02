@@ -43,6 +43,13 @@ fn zhexToBin(input_path_str: []const u8, output_path_str: []const u8) !void {
 
     compiler.feed(.{ .file = input_file }) catch |err| {
         switch (err) {
+            error.SyntaxError => {
+                std.log.err("{s}:{}:{}: syntax error", .{
+                    input_path_str,
+                    compiler.tokenizer.line_number,
+                    compiler.tokenizer.column_number,
+                });
+            },
             error.OffsetAssertionIncorrect => {
                 std.log.err("{s}:{}:{}: offset incorrect. expected: 0x{x}", .{
                     input_path_str,
@@ -51,8 +58,16 @@ fn zhexToBin(input_path_str: []const u8, output_path_str: []const u8) !void {
                     compiler.output_pos,
                 });
             },
-            error.SyntaxError => {
-                std.log.err("{s}:{}:{}: syntax error", .{
+
+            error.OutputFileSeekingIsBroken => {
+                std.log.err("{s}:{}:{}: while attempting to seek backward, seeking in the output file appears broken. Is the output file /dev/null or another special character device?", .{
+                    input_path_str,
+                    compiler.tokenizer.line_number,
+                    compiler.tokenizer.column_number,
+                });
+            },
+            error.SeekBackwardTooFar => {
+                std.log.err("{s}:{}:{}: seek backward directive passes the start of the file", .{
                     input_path_str,
                     compiler.tokenizer.line_number,
                     compiler.tokenizer.column_number,

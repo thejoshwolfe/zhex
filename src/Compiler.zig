@@ -51,8 +51,8 @@ pub fn feed(self: *Compiler, input_stream: StreamSource) !void {
             .seek_backward => |offset| {
                 try self.buffered_output.flush();
                 const pos = try self.output_stream.getPos();
-                assert(pos == self.output_pos);
-                const new_pos = try std.math.sub(u64, pos, offset); // can underflow
+                if (pos != self.output_pos) return error.OutputFileSeekingIsBroken;
+                const new_pos = std.math.sub(u64, pos, offset) catch return error.SeekBackwardTooFar;
                 try self.output_stream.seekTo(new_pos);
                 self.output_pos = new_pos;
                 self.resume_output_pos = pos;

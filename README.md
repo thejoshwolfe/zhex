@@ -65,3 +65,20 @@ An offset assertion must be the only syntactic element on a line, other than whi
 Examples: `:0x0` asserts that no bytes have been encoded yet in the source file.
 `:0x123` asserts that 291 bytes have been encoded so far.
 `:0x0000123` is the same as `:0x123`.
+
+#### Seek directive
+
+A `#seek -0x` followed by 1 to 16 hex digits `[0-9A-Fa-f]` encodes a seek backward directive.
+Note: only seeking backward is allowed at this time, not seeking forward.
+Also note: only a single space is allowed between the `#seek` and the `-0x` at this time.
+A seek backward directive must be the only syntactic element on a line, other than whitespace and possibly a comment.
+
+A seek backward directive instructs the compiler to seek backward in the output stream the specified number of bytes.
+Whatever byte values follow the seek backward directive do not override the previous values but rather must match exactly.
+The values can be encoded using different syntactic elements, but the resulting values are required to be the same as what's already been written.
+
+The presence of a seek backward directive in a source file requires the output file be open for reading and writing and be seekable.
+Note that this means the output cannot be stdout or any other pipe or a special character device, etc, unless those file descriptors support read+write and seeking.
+The compiler makes an effort to only impose these restrictions in the presence of seek backward directives.
+
+It is an error to seek backward past the start of the file.
