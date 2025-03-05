@@ -1,5 +1,6 @@
 .{
-    .name = "zhex",
+    .name = .zhex,
+    .fingerprint = 0x25566390472d7a72,
     .version = "0.0.0",
     .paths = .{
         "build.zig",
