@@ -2,6 +2,9 @@
 
 Yet another hexdump syntax.
 
+UPDATE: Partway through this project, I realized I had reinvented [nasm](https://nasm.us/).
+I'm just going to use nasm instead of this.
+
 This is a data language that compiles from text to binary primarily using hex codes similar to a hexdump.
 The input is a text file in zhex syntax, described below, and the output is a stream of bytes.
 A byte has 8 bits.
